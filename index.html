@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NuBrakes Partner Dashboard</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <style>
+    html, body, #root { margin: 0; padding: 0; min-height: 100%; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f8fafc; }
+    * { box-sizing: border-box; }
+    button, input, select { font: inherit; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+const { useState, useEffect, useCallback, useMemo } = React;
+
+const DATA_URL = "https://raw.githubusercontent.com/nubrakes-analytics/NuBrakes-Copilot/main/data/fact_nubrakes_channel_market_kpi_daily.json";
+
+const PARTNER_CHANNELS = ["GBL", "Brand", "Referral"];
+const PARTNER_MARKETS  = ["Austin", "San Antonio"];
+
+const METRICS = [
+  { key:"leads",          label:"Leads",           fmt: v => Math.round(v).toLocaleString(),  color:"#6366f1" },
+  { key:"booked",         label:"Bookings",         fmt: v => Math.round(v).toLocaleString(),  color:"#0ea5e9" },
+  { key:"completed",      label:"Completed Jobs",   fmt: v => Math.round(v).toLocaleString(),  color:"#10b981" },
+  { key:"bookingRate",    label:"Booking Rate",     fmt: v => (v*100).toFixed(1)+"%",          color:"#8b5cf6" },
+  { key:"cancelRate",     label:"Cancel Rate",      fmt: v => (v*100).toFixed(1)+"%",          color:"#ef4444", invert:true },
+  { key:"conversionRate", label:"Conversion Rate",  fmt: v => (v*100).toFixed(1)+"%",          color:"#14b8a6" }
+];
+
+const ADDITIVE_METRICS   = new Set(["leads","booked","canceled","completed"]);
+const SHARE_INCOMPATIBLE = new Set(["bookingRate","cancelRate","conversionRate"]);
+
+const CAT_COLORS = { Brand:"#0ea5e9", GBL:"#f59e0b", Referral:"#10b981" };
+
+const FALLBACK = [
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Atlanta",    "Channel Category":"GBL",     leads:8, jobs_booked:2,canceled_jobs:0,revenue:0,   jobs_completed:1},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Atlanta",    "Channel Category":"Brand",   leads:14,jobs_booked:5,canceled_jobs:1,revenue:1800,jobs_completed:4},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Atlanta",    "Channel Category":"Referral",leads:10,jobs_booked:4,canceled_jobs:0,revenue:1500,jobs_completed:3},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Austin",     "Channel Category":"GBL",     leads:12,jobs_booked:4,canceled_jobs:0,revenue:0,   jobs_completed:3},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Austin",     "Channel Category":"Brand",   leads:18,jobs_booked:7,canceled_jobs:1,revenue:2800,jobs_completed:6},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Austin",     "Channel Category":"Referral",leads:15,jobs_booked:8,canceled_jobs:0,revenue:3200,jobs_completed:7},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Dallas",     "Channel Category":"GBL",     leads:8, jobs_booked:1,canceled_jobs:0,revenue:0,   jobs_completed:0},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Dallas",     "Channel Category":"Brand",   leads:22,jobs_booked:8,canceled_jobs:1,revenue:3200,jobs_completed:7},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Dallas",     "Channel Category":"Referral",leads:6, jobs_booked:3,canceled_jobs:0,revenue:1100,jobs_completed:3},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Houston",    "Channel Category":"GBL",     leads:9, jobs_booked:2,canceled_jobs:0,revenue:0,   jobs_completed:1},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Houston",    "Channel Category":"Brand",   leads:19,jobs_booked:6,canceled_jobs:1,revenue:2400,jobs_completed:5},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Houston",    "Channel Category":"Referral",leads:11,jobs_booked:5,canceled_jobs:0,revenue:2000,jobs_completed:4},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Nashville",  "Channel Category":"GBL",     leads:5, jobs_booked:1,canceled_jobs:0,revenue:0,   jobs_completed:1},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Nashville",  "Channel Category":"Brand",   leads:10,jobs_booked:4,canceled_jobs:1,revenue:1600,jobs_completed:3},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"Nashville",  "Channel Category":"Referral",leads:8, jobs_booked:3,canceled_jobs:0,revenue:1200,jobs_completed:3},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"San Antonio","Channel Category":"GBL",     leads:7, jobs_booked:2,canceled_jobs:0,revenue:0,   jobs_completed:1},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"San Antonio","Channel Category":"Brand",   leads:11,jobs_booked:4,canceled_jobs:1,revenue:1600,jobs_completed:3},
+  {Month:"2024-10-01T05:00:00.000Z",Week:"2024-09-30T05:00:00.000Z",Day:"2024-10-01T05:00:00.000Z",market:"San Antonio","Channel Category":"Referral",leads:9, jobs_booked:4,canceled_jobs:0,revenue:1600,jobs_completed:4}
+];
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+
+function sumK(arr,key){ return arr.reduce((a,r)=>a+(Number(r[key])||0),0); }
+
+function aggregate(rows){
+  const leads=sumK(rows,"leads"),booked=sumK(rows,"booked"),canceled=sumK(rows,"canceled"),completed=sumK(rows,"completed"),revenue=sumK(rows,"revenue");
+  return { leads,booked,canceled,completed,revenue, bookingRate:leads?booked/leads:0, cancelRate:(canceled+completed)?canceled/(canceled+completed):0, conversionRate:leads?completed/leads:0, aov:completed?revenue/completed:0 };
+}
+
+function normDate(v){ if(!v)return""; return typeof v==="string"&&!v.includes("T")?v.replace(" ","T"):v; }
+
+function mapRows(d){
+  return d.filter(r=>PARTNER_CHANNELS.includes(r["Channel Category"])).map(r=>({
+    date:  normDate(r.Day||r.date||r.Month||""),
+    Week:  normDate(r.Week||r.Day||r.date||""),
+    Month: normDate(r.Month||r.Day||r.date||""),
+    market:r.market||"", cat:r["Channel Category"]||"Other",
+    leads:Number(r.leads)||0, booked:Number(r.jobs_booked)||0, canceled:Number(r.canceled_jobs)||0,
+    completed:Number(r.jobs_completed)||0, revenue:Number(r.Revenue??r.revenue??0)||0
+  }));
+}
+
+function getPeriodKey(row,period){ if(period==="week")return(row.Week||"").slice(0,10); if(period==="month")return(row.Month||"").slice(0,7); return(row.date||"").slice(0,10); }
+function getLatestMonthKey(rows){ const k=rows.map(r=>(r.Month||"").slice(0,7)).filter(Boolean).sort(); return k.length?k[k.length-1]:""; }
+function toDS(v){ if(!v)return null; const d=new Date(v); return isNaN(d.getTime())?null:d; }
+function sod(d){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()); }
+function getRowDate(r){ return toDS(r.date||r.Week||r.Month); }
+
+function getPeriodStartDate(pk,period){
+  if(period==="week") return toDS(pk+"T12:00:00");
+  if(period==="month") return toDS(pk+"-01T12:00:00");
+  return null;
+}
+function getPeriodEndDate(pk,period){
+  const s=getPeriodStartDate(pk,period); if(!s)return null;
+  if(period==="week"){ const e=new Date(s); e.setDate(e.getDate()+6); return e; }
+  if(period==="month") return new Date(s.getFullYear(),s.getMonth()+1,0);
+  return null;
+}
+function countWD(s,e){
+  const c=[0,0,0,0,0,0,0]; if(!s||!e||e<s)return c;
+  const d=sod(s),end=sod(e); while(d<=end){c[d.getDay()]++;d.setDate(d.getDate()+1);} return c;
+}
+function sumArr(a){return a.reduce((x,y)=>x+y,0);}
+
+function calcHistoricalPacing(period,rows,metricKey,lookbackDays=30){
+  if(!rows?.length||!["week","month"].includes(period)||!ADDITIVE_METRICS.has(metricKey))return null;
+  const allPK=rows.map(r=>getPeriodKey(r,period)).filter(Boolean).sort();
+  const curPK=allPK.slice(-1)[0]; if(!curPK)return null;
+  const grouped={}; rows.forEach(r=>{ const k=getPeriodKey(r,period); if(!k)return; if(!grouped[k])grouped[k]=[]; grouped[k].push(r); });
+  const curRows=grouped[curPK]||[]; if(!curRows.length)return null;
+  const curDates=curRows.map(getRowDate).filter(Boolean).sort((a,b)=>a-b);
+  const curMax=curDates.slice(-1)[0]; if(!curMax)return null;
+  const curStart=getPeriodStartDate(curPK,period),curEnd=getPeriodEndDate(curPK,period);
+  if(!curStart||!curEnd)return null;
+  const lbStart=new Date(curMax); lbStart.setDate(lbStart.getDate()-lookbackDays);
+  const curElapsed=countWD(curStart,curMax),curFull=countWD(curStart,curEnd);
+  const curActual=curRows.reduce((s,r)=>s+(Number(r[metricKey])||0),0);
+  const histKeys=Object.keys(grouped).sort().filter(k=>{
+    if(k===curPK)return false;
+    const bs=getPeriodStartDate(k,period); return bs&&sod(bs).getTime()>=sod(lbStart).getTime();
+  });
+  const shares=histKeys.map(k=>{
+    const g=grouped[k]||[]; if(!g.length)return null;
+    const ps=getPeriodStartDate(k,period),pe=getPeriodEndDate(k,period); if(!ps||!pe)return null;
+    const fwc=countWD(ps,pe),wt=[0,0,0,0,0,0,0]; g.forEach(r=>{ const d=getRowDate(r); if(!d)return; wt[d.getDay()]+=(Number(r[metricKey])||0); });
+    const tot=wt.reduce((a,b)=>a+b,0); if(!tot)return null;
+    let ee=0; for(let i=0;i<7;i++){ const fc=fwc[i]||0,ec=Math.min(curElapsed[i]||0,fc); if(!fc||!ec)continue; ee+=(wt[i]/fc)*ec; }
+    const share=ee/tot; return(share>0&&share<=1.25)?share:null;
+  }).filter(Boolean);
+  if(!shares.length){
+    const ed=sumArr(curElapsed),td=sumArr(curFull),fp=td>0?ed/td:null,proj=fp>0?curActual/fp:curActual;
+    return{elapsed:ed,total:td,pct:fp,historicalPct:null,projected:proj,actual:curActual,method:"fallback",sampleSize:0};
+  }
+  const hp=Math.max(0,Math.min(shares.reduce((a,b)=>a+b,0)/shares.length,1));
+  const proj=Math.max(curActual,hp>0?curActual/hp:curActual);
+  return{elapsed:sumArr(curElapsed),total:sumArr(curFull),pct:hp,historicalPct:hp,projected:proj,actual:curActual,method:"weekday_weighted_historical",sampleSize:shares.length};
+}
+
+function getProjVal(key,val,pacing){ return(!pacing||key.includes("Rate")||key==="aov")?val:(pacing.projected??val); }
+
+function applyProjToAgg(agg,pacing){
+  if(!agg)return agg; const p={...agg};
+  Object.keys(p).forEach(k=>{p[k]=getProjVal(k,p[k],pacing[k]);}); return p;
+}
+
+function applyProjToSeries(series,pacing){
+  if(!Array.isArray(series)||!series.length)return series;
+  return series.map((pt,i)=>{ if(i!==series.length-1)return pt; const pp={...pt}; Object.keys(pp).forEach(k=>{if(k!=="label")pp[k]=getProjVal(k,pp[k],pacing[k]);}); return pp; });
+}
+
+function buildTimeSeries(rows,period){
+  const g={};
+  rows.forEach(r=>{ const k=period==="day"?(r.date||"").slice(0,10):period==="week"?(r.Week||"").slice(0,10):(r.Month||"").slice(0,7); if(!k)return; if(!g[k])g[k]=[]; g[k].push(r); });
+  return Object.keys(g).sort().slice(period==="day"?-60:-12).map(k=>{
+    const a=g[k],leads=sumK(a,"leads"),booked=sumK(a,"booked"),canceled=sumK(a,"canceled"),completed=sumK(a,"completed"),revenue=sumK(a,"revenue");
+    return{label:k,leads,booked,canceled,completed,revenue,bookingRate:leads?booked/leads:0,cancelRate:(canceled+completed)?canceled/(canceled+completed):0,conversionRate:leads?completed/leads:0,aov:completed?revenue/completed:0};
+  });
+}
+
+function buildGroupedShareSeries(rows,period,metricKey,groupKey){
+  const tk=r=>period==="day"?(r.date||"").slice(0,10):period==="week"?(r.Week||"").slice(0,10):(r.Month||"").slice(0,7);
+  const allKeys=[...new Set(rows.map(tk).filter(Boolean))].sort().slice(period==="day"?-60:-12);
+  const groups=[...new Set(rows.map(r=>r[groupKey]).filter(Boolean))].sort();
+  const rawMap={};
+  allKeys.forEach(t=>{rawMap[t]={};groups.forEach(g=>{rawMap[t][g]=[];});});
+  rows.forEach(r=>{const t=tk(r),g=r[groupKey];if(t&&g&&rawMap[t]&&rawMap[t][g])rawMap[t][g].push(r);});
+  return{
+    series:allKeys.map(t=>{
+      const pt={label:t},ta=aggregate(Object.values(rawMap[t]).flat()),tv=ta[metricKey]||0;
+      groups.forEach(g=>{const ga=aggregate(rawMap[t][g]||[]);pt[g]=tv>0?(ga[metricKey]/tv)*100:0;}); return pt;
+    }),groups
+  };
+}
+
+function buildSeriesBreakdown(rows,period,groupKey){
+  const np=period==="week"?"week":"month",gd={};
+  rows.forEach(r=>{const g=r[groupKey]||"Unknown",tk=np==="week"?(r.Week||"").slice(0,10):(r.Month||"").slice(0,7);if(!tk)return;if(!gd[g])gd[g]={};if(!gd[g][tk])gd[g][tk]=[];gd[g][tk].push(r);});
+  return Object.keys(gd).sort().map(g=>({group:g,points:Object.keys(gd[g]).sort().map(lbl=>{
+    const a=gd[g][lbl],leads=sumK(a,"leads"),booked=sumK(a,"booked"),canceled=sumK(a,"canceled"),completed=sumK(a,"completed"),revenue=sumK(a,"revenue");
+    return{label:lbl,leads,booked,canceled,completed,revenue,bookingRate:leads?booked/leads:0,cancelRate:(canceled+completed)?canceled/(canceled+completed):0,conversionRate:leads?completed/leads:0,aov:completed?revenue/completed:0};
+  })}));
+}
+
+function applyProjToBreakdown(rows,period,groupKey){
+  if(!["week","month"].includes(period))return buildSeriesBreakdown(rows,period,groupKey);
+  return buildSeriesBreakdown(rows,period,groupKey).map(gi=>{
+    const gr=rows.filter(r=>(r[groupKey]||"Unknown")===gi.group),pm={};
+    METRICS.forEach(m=>{pm[m.key]=calcHistoricalPacing(period,gr,m.key);});
+    return{...gi,points:applyProjToSeries(gi.points||[],pm)};
+  });
+}
+
+function fmtLabel(label,period){
+  if(period==="day")return new Date(label+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
+  if(period==="week")return"W"+new Date(label+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"});
+  const[y,m]=label.split("-");
+  return["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m,10)-1]+" '"+y.slice(2);
+}
+
+function seriesColor(label,dim){ if(dim==="channel")return CAT_COLORS[label]||"#94a3b8"; const p=["#2563eb","#7c3aed","#0ea5e9","#10b981","#f59e0b","#ef4444","#14b8a6","#8b5cf6"]; let h=0,s=String(label||""); for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0; return p[h%p.length]; }
+
+async function loadData(){
+  const r=await fetch(DATA_URL+"?t="+Date.now(),{cache:"no-store"});
+  if(!r.ok)throw new Error(r.status);
+  const d=JSON.parse(await r.text());
+  if(!Array.isArray(d)||!d.length)throw new Error("empty");
+  return d;
+}
+
+// ── Corp Avg Benchmark ───────────────────────────────────────────────────────
+
+function buildCorpBenchmark(rawData,period,chanCat,overviewMonth){
+  const corpMarkets=[...new Set(rawData.map(r=>r.market).filter(Boolean))].filter(m=>!PARTNER_MARKETS.includes(m));
+  if(!corpMarkets.length)return null;
+  const corpRows=rawData.filter(r=>corpMarkets.includes(r.market)&&(chanCat==="All Channels"||r.cat===chanCat));
+  const mk=overviewMonth||getLatestMonthKey(rawData);
+  const scoped=period==="month"?corpRows.filter(r=>(r.Month||"").slice(0,7)===mk):()=>{
+    const ts=buildTimeSeries(corpRows,period); if(!ts.length)return[];
+    const ll=ts[ts.length-1].label; return corpRows.filter(r=>getPeriodKey(r,period)===ll);
+  }();
+  if(!scoped.length)return null;
+  const byM={};
+  scoped.forEach(r=>{if(!byM[r.market])byM[r.market]=[];byM[r.market].push(r);});
+  const rates={bookingRate:[],conversionRate:[],cancelRate:[]};
+  Object.values(byM).forEach(mr=>{const a=aggregate(mr);rates.bookingRate.push(a.bookingRate);rates.conversionRate.push(a.conversionRate);rates.cancelRate.push(a.cancelRate);});
+  const avg=k=>rates[k].length?rates[k].reduce((a,b)=>a+b,0)/rates[k].length:0;
+  return{bookingRate:avg("bookingRate"),conversionRate:avg("conversionRate"),cancelRate:avg("cancelRate"),marketCount:Object.keys(byM).length};
+}
+
+// ── Viewport ─────────────────────────────────────────────────────────────────
+
+function useViewport(){
+  const gs=()=>{ if(typeof window==="undefined")return{isPhone:false,isTablet:false,isDesktop:true}; const w=Math.round(window.visualViewport?.width||window.innerWidth||1280); return{isPhone:w<640,isTablet:w>=640&&w<1024,isDesktop:w>=1024}; };
+  const[s,ss]=useState(gs);
+  useEffect(()=>{ const u=()=>ss(gs()); window.addEventListener("resize",u); return()=>window.removeEventListener("resize",u); },[]);
+  return s;
+}
+
+// ── Sparkline ────────────────────────────────────────────────────────────────
+
+function Sparkline({data,metricKey,color,pacing}){
+  const isR=metricKey.includes("Rate")||metricKey==="aov";
+  const vals=data.map((d,i)=>{ const raw=d[metricKey]||0; return(i===data.length-1&&pacing&&!isR)?pacing.projected??raw:raw; });
+  if(vals.length<2)return null;
+  const mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||1,w=80,h=28;
+  const pts=vals.map((v,i)=>`${((i/(vals.length-1))*w).toFixed(1)},${(h-((v-mn)/rng)*h).toFixed(1)}`).join(" ");
+  return React.createElement("svg",{width:w,height:h,style:{display:"block"}},React.createElement("polyline",{points:pts,fill:"none",stroke:color,strokeWidth:"1.5",strokeLinejoin:"round"}));
+}
+
+// ── TrendChart ───────────────────────────────────────────────────────────────
+
+function TrendChart({data,metricKey,metric,period,chartType,pacing}){
+  const[hi,setHi]=useState(null);
+  const isR=metricKey.includes("Rate")||metricKey==="aov";
+  const hasProj=pacing&&!isR&&["week","month"].includes(period);
+  const vals=data.map((d,i)=>{ const raw=Number(d[metricKey])||0; return(i===data.length-1&&hasProj)?pacing.projected??raw:raw; });
+  const actuals=data.map(d=>Number(d[metricKey])||0);
+  if(!vals.length)return null;
+  const fv=v=>metricKey.includes("Rate")?(v*100).toFixed(1)+"%":Math.round(v).toLocaleString();
+  const fy=v=>metricKey.includes("Rate")?(v*100).toFixed(0)+"%":Math.abs(v)>=1000?(v/1000).toFixed(1)+"k":Math.round(v)+"";
+  const mn=Math.min(...vals),mx=Math.max(...vals);
+  let yMin=0,yMax=mx||1;
+  if(metricKey.includes("Rate")){const rng=Math.max(mx-mn,0.01),pad=rng*0.18;yMin=Math.max(0,mn-pad);yMax=Math.min(1,mx+pad);if(yMax-yMin<0.04){const mid=(yMax+yMin)/2;yMin=Math.max(0,mid-0.02);yMax=Math.min(1,mid+0.02);}}
+  else{const rng=Math.max(mx-mn,Math.abs(mx)*0.08,1),pad=rng*0.18;yMin=mx>0&&mn/mx<0.65?0:Math.max(0,mn-pad);yMax=mx+pad;if(yMax<=yMin)yMax=yMin+1;}
+  const W=680,H=250,pL=64,pB=44,pT=18,pR=18,cW=W-pL-pR,cH=H-pB-pT,li=vals.length-1;
+  const bW=Math.min(cW/vals.length-4,28),step=Math.ceil(vals.length/10),gId="lg_"+metricKey,yRng=yMax-yMin||1;
+  const xP=i=>pL+(vals.length===1?cW/2:(i/(vals.length-1))*cW),yP=v=>pT+cH-((v-yMin)/yRng)*cH;
+  const ticks=Array.from({length:5},(_,i)=>yMin+(yRng*i)/4);
+  const tv=hi!==null?vals[hi]:null,tx=hi!==null?xP(hi):null,ty=hi!==null?yP(tv):null;
+  const tlbl=hi!==null?`${fmtLabel(data[hi].label,period)} • ${fv(tv)}`:"",tw=Math.max(92,Math.min(170,tlbl.length*6.3));
+  let tl=tx!==null?tx-tw/2:0; if(tl<8)tl=8; if(tl+tw>W-8)tl=W-tw-8;
+  let tt=ty!==null?ty-34:0; if(tt<6)tt=ty+12;
+  return React.createElement("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:"auto",overflow:"visible"},onMouseLeave:()=>setHi(null)},
+    ticks.map((t,i)=>React.createElement("g",{key:i},React.createElement("line",{x1:pL,x2:W-pR,y1:yP(t),y2:yP(t),stroke:"#e5e7eb",strokeWidth:"1"}),React.createElement("text",{x:pL-6,y:yP(t)+4,textAnchor:"end",fontSize:"10",fill:"#9ca3af"},fy(t)))),
+    hi!==null?React.createElement("g",null,React.createElement("line",{x1:tx,x2:tx,y1:pT,y2:pT+cH,stroke:"#cbd5e1",strokeWidth:"1",strokeDasharray:"4,4"}),React.createElement("rect",{x:tl,y:tt,width:tw,height:22,rx:"6",fill:"#111827",opacity:0.96}),React.createElement("text",{x:tl+tw/2,y:tt+14,textAnchor:"middle",fontSize:"9.5",fill:"#fff",fontWeight:"600"},tlbl)):null,
+    chartType==="line"?React.createElement("g",null,
+      React.createElement("defs",null,React.createElement("linearGradient",{id:gId,x1:"0",y1:"0",x2:"0",y2:"1"},React.createElement("stop",{offset:"0%",stopColor:metric.color,stopOpacity:"0.18"}),React.createElement("stop",{offset:"100%",stopColor:metric.color,stopOpacity:"0.01"}))),
+      React.createElement("polygon",{points:`${xP(0).toFixed(1)},${(pT+cH).toFixed(1)} ${vals.map((v,i)=>`${xP(i).toFixed(1)},${yP(v).toFixed(1)}`).join(" ")} ${xP(li).toFixed(1)},${(pT+cH).toFixed(1)}`,fill:`url(#${gId})`}),
+      React.createElement("polyline",{points:vals.map((v,i)=>`${xP(i).toFixed(1)},${yP(v).toFixed(1)}`).join(" "),fill:"none",stroke:metric.color,strokeWidth:"2",strokeLinejoin:"round",strokeLinecap:"round"}),
+      hasProj&&vals.length>1?React.createElement("line",{x1:xP(li-1).toFixed(1),y1:yP(actuals[li-1]).toFixed(1),x2:xP(li).toFixed(1),y2:yP(vals[li]).toFixed(1),stroke:metric.color,strokeWidth:"2",strokeDasharray:"5,4",opacity:"0.7"}):null,
+      vals.map((v,i)=>React.createElement("g",{key:i},React.createElement("circle",{cx:xP(i),cy:yP(v),r:hi===i?5:i===li&&hasProj?4:3,fill:hi===i?"#111827":i===li&&hasProj?"#3b82f6":metric.color,stroke:"#fff",strokeWidth:"1.5"}),React.createElement("circle",{cx:xP(i),cy:yP(v),r:16,fill:"transparent",style:{cursor:"pointer"},onMouseEnter:()=>setHi(i),onMouseMove:()=>setHi(i)}))),
+      hasProj?React.createElement("g",null,React.createElement("rect",{x:xP(li)-32,y:yP(vals[li])-24,width:64,height:18,rx:"4",fill:"#3b82f6"}),React.createElement("text",{x:xP(li),y:yP(vals[li])-12,textAnchor:"middle",fontSize:"9",fill:"#fff",fontWeight:"700"},"Proj "+fy(vals[li]))):null,
+      vals.map((v,i)=>i%step===0?React.createElement("text",{key:"x"+i,x:xP(i),y:H-6,textAnchor:"middle",fontSize:"9",fill:"#9ca3af"},fmtLabel(data[i].label,period)):null)
+    ):React.createElement("g",null,
+      vals.map((v,i)=>{ const x=pL+(i/vals.length)*cW+cW/vals.length/2,bh=Math.max(((v-yMin)/yRng)*cH,1.5),cy=yP(v),ip=i===li&&hasProj;
+        return React.createElement("g",{key:i},React.createElement("rect",{x:x-bW/2,y:cy,width:bW,height:Math.max(bh,0),rx:"3",fill:hi===i?"#111827":ip?"#3b82f6":metric.color,opacity:ip?1:0.88}),React.createElement("rect",{x:x-Math.max(bW,22)/2,y:pT,width:Math.max(bW,22),height:cH,fill:"transparent",style:{cursor:"pointer"},onMouseEnter:()=>setHi(i),onMouseMove:()=>setHi(i)}),ip?React.createElement("g",null,React.createElement("rect",{x:x-28,y:cy-20,width:56,height:16,rx:"4",fill:"#3b82f6"}),React.createElement("text",{x,y:cy-9,textAnchor:"middle",fontSize:"9",fill:"#fff",fontWeight:"700"},"Proj")):null,i%step===0?React.createElement("text",{x,y:H-6,textAnchor:"middle",fontSize:"9",fill:"#9ca3af"},fmtLabel(data[i].label,period)):null);
+      })
+    )
+  );
+}
+
+// ── MultiLineShareChart ───────────────────────────────────────────────────────
+
+function MultiLineShareChart({data,groups,period,dimension}){
+  if(!data.length)return null;
+  const ms=dimension==="market"?50:100,W=680,H=230,pL=44,pB=36,pT=16,pR=16,cW=W-pL-pR,cH=H-pB-pT,n=data.length;
+  const xP=i=>pL+(n>1?i/(n-1):0.5)*cW,yP=v=>pT+cH-(Math.min(Math.max(v,0),ms)/ms)*cH;
+  const step=Math.ceil(n/10),active=groups.filter(g=>data.some(d=>(d[g]||0)>0));
+  const ticks=dimension==="market"?[0,10,20,30,40,50]:[0,25,50,75,100];
+  return React.createElement("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:"auto"}},
+    React.createElement("defs",null,active.map(g=>React.createElement("linearGradient",{key:"g_"+g,id:"sg_"+g,x1:"0",y1:"0",x2:"0",y2:"1"},React.createElement("stop",{offset:"0%",stopColor:seriesColor(g,dimension),stopOpacity:"0.12"}),React.createElement("stop",{offset:"100%",stopColor:seriesColor(g,dimension),stopOpacity:"0.01"})))),
+    ticks.map(t=>{const y=pT+cH*(1-t/ms);return React.createElement("g",{key:t},React.createElement("line",{x1:pL,x2:W-pR,y1:y,y2:y,stroke:"#e5e7eb",strokeWidth:"1"}),React.createElement("text",{x:pL-5,y:y+4,textAnchor:"end",fontSize:"9",fill:"#9ca3af"},t+"%"));}),
+    active.map(g=>{const c=seriesColor(g,dimension),pts=data.map((d,i)=>xP(i).toFixed(1)+","+yP(d[g]||0).toFixed(1)).join(" ");return React.createElement("g",{key:g},React.createElement("polygon",{points:xP(0).toFixed(1)+","+(pT+cH)+" "+pts+" "+xP(n-1).toFixed(1)+","+(pT+cH),fill:`url(#sg_${g})`}),React.createElement("polyline",{points:pts,fill:"none",stroke:c,strokeWidth:"2",strokeLinejoin:"round",strokeLinecap:"round"}));}),
+    active.map(g=>data.map((d,i)=>React.createElement("circle",{key:g+"_"+i,cx:xP(i),cy:yP(d[g]||0),r:2.5,fill:seriesColor(g,dimension),stroke:"#fff",strokeWidth:"1"}))),
+    data.map((d,i)=>i%step===0?React.createElement("text",{key:i,x:xP(i),y:H-4,textAnchor:"middle",fontSize:"9",fill:"#9ca3af"},fmtLabel(d.label,period)):null)
+  );
+}
+
+// ── FunnelChart ──────────────────────────────────────────────────────────────
+
+function FunnelChart({curr,prev,period,pacing}){
+  const steps=[{key:"leads",label:"Leads",color:"#6366f1"},{key:"booked",label:"Booked",color:"#0ea5e9"},{key:"completed",label:"Completed",color:"#10b981"}];
+  const pc={leads:getProjVal("leads",curr.leads||0,pacing.leads),booked:getProjVal("booked",curr.booked||0,pacing.booked),completed:getProjVal("completed",curr.completed||0,pacing.completed)};
+  const maxV=Math.max(pc.leads||1,1),pl=period==="day"?"day":period==="week"?"week":"month";
+  return React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:"16px 18px 20px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #f1f5f9"}},
+    React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:16}},"Conversion Funnel — Projected Current "+pl),
+    React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+      steps.map(s=>{
+        const val=pc[s.key]||0,pw=maxV?val/maxV:0,pv=prev[s.key]||0;
+        const pol=pc.leads>0&&s.key!=="leads"?((val/pc.leads)*100).toFixed(1):null;
+        const chg=pv?((val-pv)/pv)*100:0,good=chg>=0;
+        return React.createElement("div",{key:s.key},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}},
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},React.createElement("div",{style:{width:8,height:8,borderRadius:"50%",background:s.color,flexShrink:0}}),React.createElement("span",{style:{fontSize:13,fontWeight:700,color:"#111827"}},s.label),pol!==null?React.createElement("span",{style:{fontSize:11,color:"#9ca3af",marginLeft:2}},"("+pol+"% of Leads)"):null),
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},React.createElement("span",{style:{fontSize:13,fontWeight:700,color:"#111827"}},Math.round(val).toLocaleString()),pv>0?React.createElement("span",{style:{fontSize:11,fontWeight:600,color:good?"#10b981":"#f43f5e",background:good?"#ecfdf5":"#fff1f2",padding:"1px 6px",borderRadius:20,whiteSpace:"nowrap"}},(good?"▲":"▼")+Math.abs(chg).toFixed(1)+"%"):null)
+          ),
+          React.createElement("div",{style:{position:"relative",height:10,background:"#f1f5f9",borderRadius:6,overflow:"hidden"}},
+            React.createElement("div",{style:{position:"absolute",left:0,top:0,height:"100%",width:pw*100+"%",background:s.color,borderRadius:6}}),
+            pv>0?React.createElement("div",{style:{position:"absolute",left:0,top:0,height:"100%",width:((maxV?pv/maxV:0)*100)+"%",background:"none",borderRight:"2px dashed "+s.color,opacity:0.4}}):null
+          )
+        );
+      })
+    )
+  );
+}
+
+// ── ComparisonChart ───────────────────────────────────────────────────────────
+
+function ComparisonChart({curr,prev,period,pacing}){
+  const KPIs=[{key:"leads",label:"Leads",color:"#6366f1"},{key:"booked",label:"Bookings",color:"#0ea5e9"},{key:"completed",label:"Completed",color:"#10b981"},{key:"bookingRate",label:"Book Rate",color:"#8b5cf6"},{key:"conversionRate",label:"Conv. Rate",color:"#14b8a6"}];
+  const pl=period==="day"?"day":period==="week"?"week":"month";
+  const W=560,H=220,pL=16,pR=16,pT=16,pB=32,cW=W-pL-pR,cH=H-pT-pB,n=KPIs.length,gW=cW/n,bW=Math.min(gW*0.32,22),gap=bW*0.6,xC=i=>pL+i*gW+gW/2;
+  return React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:"16px 18px 20px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #f1f5f9"}},
+    React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}},
+      React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em"}},"Projected Current vs Prior Period — Core KPIs"),
+      React.createElement("div",{style:{display:"flex",gap:14,fontSize:11}},
+        React.createElement("span",{style:{display:"flex",alignItems:"center",gap:5}},React.createElement("span",{style:{width:10,height:10,borderRadius:2,background:"#6366f1",display:"inline-block"}}),React.createElement("span",{style:{color:"#6b7280",fontWeight:600}},"Projected current "+pl)),
+        React.createElement("span",{style:{display:"flex",alignItems:"center",gap:5}},React.createElement("span",{style:{width:10,height:10,borderRadius:2,background:"#e5e7eb",border:"1.5px dashed #9ca3af",display:"inline-block"}}),React.createElement("span",{style:{color:"#9ca3af",fontWeight:600}},"Prior "+pl))
+      )
+    ),
+    React.createElement("svg",{viewBox:`0 0 ${W} ${H}`,style:{width:"100%",height:"auto"}},
+      [0,0.5,1].map(t=>React.createElement("g",{key:t},React.createElement("line",{x1:pL,x2:W-pR,y1:pT+cH*(1-t),y2:pT+cH*(1-t),stroke:"#f1f5f9",strokeWidth:"1"}))),
+      KPIs.map((kpi,i)=>{
+        const cx=xC(i),cv=getProjVal(kpi.key,curr[kpi.key]||0,pacing[kpi.key]),pv=prev[kpi.key]||0,lm=Math.max(cv,pv,1);
+        const ch2=Math.max((cv/lm)*cH,0),ph2=Math.max((pv/lm)*cH,0),cy=pT+cH-ch2,py=pT+cH-ph2;
+        const chg=pv?((cv-pv)/pv)*100:0,good=chg>=0;
+        return React.createElement("g",{key:kpi.key},React.createElement("rect",{x:cx-gap/2-bW,y:py,width:bW,height:ph2,rx:"3",fill:"#e5e7eb",opacity:0.8}),React.createElement("rect",{x:cx+gap/2,y:cy,width:bW,height:ch2,rx:"3",fill:kpi.color,opacity:0.9}),React.createElement("text",{x:cx,y:H-4,textAnchor:"middle",fontSize:"9",fill:"#9ca3af"},kpi.label),pv>0?React.createElement("text",{x:cx,y:Math.min(cy,py)-5,textAnchor:"middle",fontSize:"8.5",fill:good?"#10b981":"#f43f5e",fontWeight:"700"},(good?"▲":"▼")+Math.abs(chg).toFixed(1)+"%"):null);
+      })
+    )
+  );
+}
+
+// ── Corp Avg Benchmark Card ───────────────────────────────────────────────────
+
+function CorpAvgCard({benchmark,market,chanCat}){
+  if(!benchmark)return null;
+  const metrics=[{key:"bookingRate",label:"Booking Rate",color:"#8b5cf6"},{key:"conversionRate",label:"Conversion Rate",color:"#14b8a6"},{key:"cancelRate",label:"Cancel Rate",color:"#ef4444"}];
+  const scope=market==="All Markets"?"Austin & San Antonio":market;
+  return React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:"16px 18px 20px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #f1f5f9"}},
+    React.createElement("div",{style:{marginBottom:14}},
+      React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:2}},"Corporate Market Benchmark"),
+      React.createElement("div",{style:{fontSize:12,color:"#6b7280"}},"Average conversion rates across "+benchmark.marketCount+" corporate markets"+(chanCat!=="All Channels"?" · "+chanCat+" channel":"")+" — reference for how "+scope+" compares")
+    ),
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}},
+      metrics.map(m=>React.createElement("div",{key:m.key,style:{background:"#f8fafc",borderRadius:10,padding:"12px 14px",border:"1px solid #f1f5f9"}},
+        React.createElement("div",{style:{fontSize:10,fontWeight:600,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}},m.label),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},React.createElement("div",{style:{width:10,height:10,borderRadius:"50%",background:m.color,flexShrink:0}}),React.createElement("span",{style:{fontSize:20,fontWeight:700,color:"#111827"}},(benchmark[m.key]*100).toFixed(1)+"%")),
+        React.createElement("div",{style:{fontSize:11,color:"#6b7280",marginTop:4}},"Corp. avg across "+benchmark.marketCount+" markets")
+      ))
+    )
+  );
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+const card={background:"#fff",borderRadius:12,padding:"16px 18px 14px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",border:"1px solid #f1f5f9"};
+
+function Dashboard(){
+  const{isPhone,isTablet}=useViewport();
+  const[rawData,setRawData]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[fallback,setFallback]=useState(false);
+  const[period,setPeriod]=useState("month");
+  const[market,setMarket]=useState("All Markets");
+  const[chanCat,setChanCat]=useState("All Channels");
+  const[tab,setTab]=useState("overview");
+  const[trendKey,setTrendKey]=useState("leads");
+  const[chartType,setChartType]=useState("line");
+  const[trendView,setTrendView]=useState("absolute");
+  const[shareDim,setShareDim]=useState("channel");
+  const[ovMonth,setOvMonth]=useState("");
+
+  useEffect(()=>{if(SHARE_INCOMPATIBLE.has(trendKey)&&trendView==="share")setTrendView("absolute");},[trendKey,trendView]);
+
+  useEffect(()=>{
+    loadData().then(d=>{setRawData(mapRows(d));setFallback(false);setLoading(false);}).catch(()=>{setRawData(mapRows(FALLBACK));setFallback(true);setLoading(false);});
+  },[]);
+
+  const chanCats=useMemo(()=>{const s={};rawData.forEach(r=>{if(r.cat&&PARTNER_CHANNELS.includes(r.cat))s[r.cat]=1;});return Object.keys(s).sort();},[rawData]);
+
+  const filtered=useMemo(()=>rawData.filter(r=>PARTNER_MARKETS.includes(r.market)&&(market==="All Markets"||r.market===market)&&(chanCat==="All Channels"||r.cat===chanCat)),[rawData,market,chanCat]);
+
+  const ovMonthOpts=useMemo(()=>[...new Set(filtered.map(r=>(r.Month||"").slice(0,7)).filter(Boolean))].sort(),[filtered]);
+  useEffect(()=>{if(!ovMonthOpts.length)return;if(!ovMonth||!ovMonthOpts.includes(ovMonth))setOvMonth(ovMonthOpts[ovMonthOpts.length-1]);},[ovMonthOpts,ovMonth]);
+
+  const series=useMemo(()=>buildTimeSeries(filtered,period),[filtered,period]);
+
+  const ovRows=useMemo(()=>{const mk=ovMonth||getLatestMonthKey(rawData);return filtered.filter(r=>(r.Month||"").slice(0,7)===mk);},[filtered,rawData,ovMonth]);
+
+  const csdData=useMemo(()=>buildGroupedShareSeries(filtered,period,trendKey,"cat"),[filtered,period,trendKey]);
+  const msdData=useMemo(()=>buildGroupedShareSeries(filtered,period,trendKey,"market"),[filtered,period,trendKey]);
+
+  const getRows=useCallback(lbl=>filtered.filter(r=>getPeriodKey(r,period)===lbl),[filtered,period]);
+
+  const curr=useMemo(()=>{ if(period==="month")return aggregate(ovRows); if(!series.length)return{}; return aggregate(getRows(series[series.length-1].label)); },[period,ovRows,series,getRows]);
+  const prev=useMemo(()=>{
+    if(period==="month"){const mk=[...new Set(filtered.map(r=>(r.Month||"").slice(0,7)).filter(Boolean))].sort(),idx=mk.indexOf(ovMonth),pk=idx>0?mk[idx-1]:null;if(!pk)return{};return aggregate(filtered.filter(r=>(r.Month||"").slice(0,7)===pk));}
+    if(series.length<2)return{}; return aggregate(getRows(series[series.length-2].label));
+  },[period,filtered,ovMonth,series,getRows]);
+
+  const pacing=useMemo(()=>{
+    const r={},lmk=getLatestMonthKey(filtered),isLat=ovMonth===lmk;
+    METRICS.forEach(m=>{r[m.key]=period!=="month"?calcHistoricalPacing(period,filtered,m.key):filtered.length&&isLat?calcHistoricalPacing(period,filtered,m.key):null;});
+    return r;
+  },[period,filtered,ovMonth]);
+
+  const corpBench=useMemo(()=>buildCorpBenchmark(rawData,period,chanCat,ovMonth),[rawData,period,chanCat,ovMonth]);
+
+  const defPacing=pacing.leads||null;
+  const pct=(c,p)=>p?((c-p)/p)*100:0;
+  const periodLabel=period==="day"?"Last 60 Days":period==="week"?"Last 12 Weeks":"Last 12 Months";
+  const isRate=k=>k.includes("Rate")||k==="aov";
+  const selM=METRICS.find(m=>m.key===trendKey)||METRICS[0];
+  const shareBlocked=SHARE_INCOMPATIBLE.has(trendKey);
+  const selPacing=pacing[trendKey]||null;
+  const actChan=csdData.groups.filter(c=>csdData.series.some(d=>(d[c]||0)>0));
+  const actMkt=msdData.groups.filter(m=>msdData.series.some(d=>(d[m]||0)>0));
+  const actShareData=shareDim==="market"?msdData:csdData;
+  const actShareGrps=shareDim==="market"?actMkt:actChan;
+
+  const ovLabel=useMemo(()=>{
+    if(!series.length)return""; const ll=series[series.length-1].label;
+    if(period==="day")return new Date(ll+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+    if(period==="week"){const s=new Date(ll+"T12:00:00"),e=new Date(s);e.setDate(e.getDate()+6);return s.toLocaleDateString("en-US",{month:"short",day:"numeric"})+" – "+e.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});}
+    return new Date(ll+"-01T12:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  },[series,period]);
+
+  if(loading)return React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#6b7280",flexDirection:"column",gap:12}},React.createElement("div",{style:{width:32,height:32,border:"3px solid #e5e7eb",borderTop:"3px solid #6366f1",borderRadius:"50%",animation:"spin 1s linear infinite"}}),React.createElement("span",null,"Loading live data..."));
+
+  const cStyle={fontFamily:"system-ui,sans-serif",background:"#f8fafc",minHeight:"100vh",padding:isPhone?"12px":isTablet?"16px":"20px 16px"};
+  const selStyle={padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:13,color:"#374151",background:"#fff",cursor:"pointer",minWidth:isPhone?"100%":150,width:isPhone?"100%":"auto",maxWidth:"100%"};
+
+  const pacingBanner=defPacing&&["week","month"].includes(period)?React.createElement("div",{style:{marginBottom:12,padding:isPhone?"10px 12px":"10px 14px",borderRadius:12,background:"#fff",border:"1px solid #e5e7eb",display:"flex",alignItems:isPhone?"flex-start":"center",justifyContent:"space-between",gap:10,flexDirection:isPhone?"column":"row"}},React.createElement("div",{style:{minWidth:0}},React.createElement("div",{style:{fontSize:12,fontWeight:700,color:"#111827",marginBottom:2}},"Overview cards show pacing")),React.createElement("div",{style:{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 9px",borderRadius:999,background:"#f8fafc",border:"1px solid #e5e7eb",flexShrink:0}},React.createElement("div",{style:{width:7,height:7,borderRadius:"50%",background:"#3b82f6"}}),React.createElement("span",{style:{fontSize:11,fontWeight:700,color:"#3b82f6",whiteSpace:"nowrap"}},"Pacing"))):null;
+
+  return React.createElement("div",{style:cStyle},
+    React.createElement("div",{style:{maxWidth:1240,margin:"0 auto"}},
+
+      // Header
+      React.createElement("div",{style:{marginBottom:20}},
+        React.createElement("h1",{style:{margin:0,fontSize:isPhone?18:20,fontWeight:700,color:"#111827"}},"NuBrakes Partner Dashboard"),
+        React.createElement("p",{style:{margin:"3px 0 0",fontSize:12,color:"#6b7280"}},
+          "NuBrakes · "+(market==="All Markets"?"Austin & San Antonio":market)+" · "+(chanCat==="All Channels"?"GBL, Brand & Referral":chanCat)+" · "+
+          (tab==="overview"?period==="month"&&ovMonth?new Date(ovMonth+"-01T12:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"}):ovLabel:periodLabel)
+        ),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginTop:6}},
+          React.createElement("div",{style:{display:"inline-flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,background:fallback?"#fff7ed":"#ecfdf5",border:"1px solid "+(fallback?"#fed7aa":"#6ee7b7")}},
+            React.createElement("div",{style:{width:6,height:6,borderRadius:"50%",background:fallback?"#f97316":"#10b981"}}),
+            React.createElement("span",{style:{fontSize:11,fontWeight:600,color:fallback?"#c2410c":"#065f46"}},fallback?"Sample Data":"Live Data")
+          ),
+          fallback?React.createElement("span",{style:{fontSize:11,color:"#c2410c"}},"⚠️ Live data unavailable"):null
+        )
+      ),
+
+      // Controls
+      React.createElement("div",{style:{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap",alignItems:"center"}},
+        ["day","week","month"].map(p=>React.createElement("button",{key:p,onClick:()=>setPeriod(p),style:{padding:"6px 16px",borderRadius:20,border:"none",fontSize:12,fontWeight:600,cursor:"pointer",background:period===p?"#111827":"#fff",color:period===p?"#fff":"#6b7280",boxShadow:period===p?"none":"0 1px 3px rgba(0,0,0,0.08)"}},p.charAt(0).toUpperCase()+p.slice(1))),
+        React.createElement("select",{value:market,onChange:e=>setMarket(e.target.value),style:selStyle},
+          React.createElement("option",null,"All Markets"),
+          PARTNER_MARKETS.map(m=>React.createElement("option",{key:m},m))
+        ),
+        React.createElement("select",{value:chanCat,onChange:e=>setChanCat(e.target.value),style:selStyle},
+          React.createElement("option",null,"All Channels"),
+          chanCats.map(c=>React.createElement("option",{key:c},c))
+        )
+      ),
+
+      // Tabs
+      React.createElement("div",{style:{display:"flex",marginBottom:22,borderBottom:"1.5px solid #e5e7eb",overflowX:"auto"}},
+        [["overview","Overview"],["trends","Trends"]].map(([t,lbl])=>React.createElement("button",{key:t,onClick:()=>setTab(t),style:{padding:"8px 20px",border:"none",background:"none",fontSize:13,fontWeight:600,cursor:"pointer",color:tab===t?"#111827":"#9ca3af",borderBottom:tab===t?"2px solid #111827":"2px solid transparent",marginBottom:-1.5,whiteSpace:"nowrap"}},lbl))
+      ),
+
+      // ── OVERVIEW TAB ──────────────────────────────────────────────────────
+      tab==="overview"?React.createElement("div",null,
+        period==="month"?React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:isPhone?"stretch":"center",flexDirection:isPhone?"column":"row",gap:10,marginBottom:12}},
+          React.createElement("div",{style:{fontSize:12,color:"#6b7280"}},"Selected month: "+(ovMonth?new Date(ovMonth+"-01T12:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"}):"Current Month")),
+          React.createElement("select",{value:ovMonth,onChange:e=>setOvMonth(e.target.value),style:{padding:"9px 12px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:13,color:"#374151",background:"#fff",cursor:"pointer",minWidth:isPhone?"100%":180}},
+            ...ovMonthOpts.map(m=>React.createElement("option",{key:m,value:m},new Date(m+"-01T12:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"})))
+          )
+        ):null,
+        pacingBanner,
+
+        // KPI cards
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:isPhone?"1fr":isTablet?"repeat(2,minmax(0,1fr))":"repeat(auto-fill,minmax(190px,1fr))",gap:12,marginBottom:20}},
+          METRICS.map(m=>{
+            const actual=curr[m.key]||0,pac=pacing[m.key]||null,pv=getProjVal(m.key,actual,pac),prior=prev[m.key]||0;
+            const dv=pac&&!isRate(m.key)?pv:actual,chg=pct(dv,prior),good=m.invert?chg<=0:chg>=0;
+            return React.createElement("div",{key:m.key,style:{...card,padding:"14px 16px"}},
+              React.createElement("div",{style:{fontSize:10,fontWeight:600,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}},m.label),
+              React.createElement("div",{style:{fontSize:22,fontWeight:700,color:"#111827",marginBottom:8}},m.fmt(dv)),
+              React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:8}},
+                React.createElement("span",{style:{fontSize:11,fontWeight:600,color:good?"#10b981":"#f43f5e",background:good?"#ecfdf5":"#fff1f2",padding:"2px 7px",borderRadius:20,whiteSpace:"nowrap"}},(good?"▲":"▼")+" "+Math.abs(chg).toFixed(1)+"%"),
+                React.createElement(Sparkline,{data:series,metricKey:m.key,color:m.color,pacing:pac})
+              ),
+              pac&&!isRate(m.key)?React.createElement("div",{style:{marginTop:8,paddingTop:8,borderTop:"1px dashed #e5e7eb",display:"flex",justifyContent:"space-between",alignItems:"center"}},React.createElement("span",{style:{fontSize:10,color:"#9ca3af"}},"Actual to date"),React.createElement("span",{style:{fontSize:12,fontWeight:700,color:"#6b7280"}},m.fmt(actual))):null
+            );
+          })
+        ),
+
+        // Funnel + Comparison
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:isPhone?"1fr":isTablet?"1fr":"repeat(2,minmax(0,1fr))",gap:16,marginBottom:16}},
+          React.createElement(FunnelChart,{curr,prev,period,pacing}),
+          React.createElement(ComparisonChart,{curr,prev,period,pacing})
+        ),
+
+        // Corp Benchmark
+        React.createElement(CorpAvgCard,{benchmark:corpBench,market,chanCat})
+      ):null,
+
+      // ── TRENDS TAB ────────────────────────────────────────────────────────
+      tab==="trends"?React.createElement("div",null,
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:isPhone?"stretch":"center",flexDirection:isPhone?"column":"row",gap:12,marginBottom:16}},
+          React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
+            METRICS.map(m=>React.createElement("button",{key:m.key,onClick:()=>setTrendKey(m.key),style:{padding:"5px 13px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"1.5px solid "+(trendKey===m.key?m.color:"#e5e7eb"),background:trendKey===m.key?m.color:"#fff",color:trendKey===m.key?"#fff":"#6b7280"}},m.label))
+          ),
+          React.createElement("div",{style:{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}},
+            [["line","╱ Line"],["bar","▬ Bar"]].map(([t,l])=>React.createElement("button",{key:t,onClick:()=>setChartType(t),style:{padding:"5px 12px",borderRadius:6,border:"none",fontSize:12,fontWeight:600,cursor:"pointer",background:chartType===t?"#fff":"transparent",color:chartType===t?"#111827":"#9ca3af",boxShadow:chartType===t?"0 1px 3px rgba(0,0,0,0.1)":"none"}},l))
+          )
+        ),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap"}},
+          React.createElement("div",{style:{display:"flex",gap:4,background:shareBlocked?"#f8fafc":"#f1f5f9",borderRadius:8,padding:3,opacity:shareBlocked?0.5:1}},
+            [["absolute","Absolute"],["share","% Share"]].map(([v,l])=>React.createElement("button",{key:v,onClick:()=>{if(!shareBlocked||v==="absolute")setTrendView(v);},disabled:shareBlocked&&v==="share",style:{padding:"5px 14px",borderRadius:6,border:"none",fontSize:12,fontWeight:600,cursor:shareBlocked&&v==="share"?"not-allowed":"pointer",background:trendView===v&&!(shareBlocked&&v==="share")?"#fff":"transparent",color:trendView===v&&!(shareBlocked&&v==="share")?"#111827":"#9ca3af",boxShadow:trendView===v&&!(shareBlocked&&v==="share")?"0 1px 3px rgba(0,0,0,0.1)":"none"}},l))
+          ),
+          trendView==="share"?React.createElement("div",{style:{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}},
+            [["channel","By Channel"],["market","By Market"]].map(([v,l])=>React.createElement("button",{key:v,onClick:()=>setShareDim(v),style:{padding:"5px 14px",borderRadius:6,border:"none",fontSize:12,fontWeight:600,cursor:"pointer",background:shareDim===v?"#fff":"transparent",color:shareDim===v?"#111827":"#9ca3af",boxShadow:shareDim===v?"0 1px 3px rgba(0,0,0,0.1)":"none"}},l))
+          ):null
+        ),
+        React.createElement("div",{style:{...card,marginBottom:16}},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}},
+            React.createElement("div",{style:{fontSize:11,fontWeight:600,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em"}},trendView==="share"?selM.label+" Share — "+(shareDim==="market"?"By Market":"By Channel"):selM.label+" — "+periodLabel),
+            trendView==="share"?React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},actShareGrps.map(g=>React.createElement("div",{key:g,style:{display:"flex",alignItems:"center",gap:5,fontSize:12}},React.createElement("div",{style:{width:10,height:10,borderRadius:"50%",background:seriesColor(g,shareDim)}}),React.createElement("span",{style:{color:"#6b7280",fontWeight:600}},g)))):null
+          ),
+          trendView==="absolute"?React.createElement(TrendChart,{data:series,metricKey:trendKey,metric:selM,period,chartType,pacing:selPacing}):React.createElement(MultiLineShareChart,{data:actShareData.series,groups:actShareData.groups,period,dimension:shareDim})
+        ),
+        trendView==="share"&&actShareGrps.length>0?React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:8,marginTop:16}},
+          actShareGrps.map(g=>{
+            const vs=actShareData.series.map(d=>d[g]||0),lt=vs.length?vs[vs.length-1]:0,pr=vs.length>1?vs[vs.length-2]:0,chg=pr?((lt-pr)/pr)*100:0,good=chg>=0;
+            return React.createElement("div",{key:g,style:{background:"#f8fafc",borderRadius:10,padding:"10px 12px",border:"1px solid #f1f5f9"}},
+              React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:4}},React.createElement("div",{style:{width:8,height:8,borderRadius:"50%",background:seriesColor(g,shareDim)}}),React.createElement("span",{style:{fontSize:11,fontWeight:600,color:"#6b7280"}},g)),
+              React.createElement("div",{style:{fontSize:18,fontWeight:700,color:"#111827"}},lt.toFixed(1)+"%"),
+              React.createElement("div",{style:{fontSize:11,fontWeight:600,color:good?"#10b981":"#f43f5e",marginTop:2}},(good?"▲":"▼")+Math.abs(chg).toFixed(1)+"% vs prior")
+            );
+          })
+        ):null
+      ):null
+
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(Dashboard));
+  </script>
+</body>
+</html>
