@@ -479,18 +479,15 @@
     const PARTNER_MARKETS = ["Austin", "San Antonio"];
 
     const METRICS = [
-      { key:"leads",          label:"Leads",           fmt: v => Math.round(v).toLocaleString(),      color:"#6366f1" },
-      { key:"booked",         label:"Bookings",        fmt: v => Math.round(v).toLocaleString(),      color:"#0ea5e9" },
-      { key:"canceled",       label:"Canceled Jobs",   fmt: v => Math.round(v).toLocaleString(),      color:"#f43f5e", invert:true },
-      { key:"completed",      label:"Completed Jobs",  fmt: v => Math.round(v).toLocaleString(),      color:"#10b981" },
-      { key:"revenue",        label:"Revenue",         fmt: v => "$" + Math.round(v).toLocaleString(), color:"#f59e0b" },
-      { key:"bookingRate",    label:"Booking Rate",    fmt: v => (v*100).toFixed(1)+"%",            color:"#8b5cf6" },
-      { key:"cancelRate",     label:"Cancel Rate",     fmt: v => (v*100).toFixed(1)+"%",            color:"#ef4444", invert:true },
-      { key:"conversionRate", label:"Conversion Rate", fmt: v => (v*100).toFixed(1)+"%",            color:"#14b8a6" },
-      { key:"aov",            label:"AOV",             fmt: v => "$" + Math.round(v).toLocaleString(), color:"#f97316" }
+      { key:"leads",          label:"Leads",           fmt: v => Math.round(v).toLocaleString(),  color:"#6366f1" },
+      { key:"booked",         label:"Bookings",        fmt: v => Math.round(v).toLocaleString(),  color:"#0ea5e9" },
+      { key:"completed",      label:"Completed Jobs",  fmt: v => Math.round(v).toLocaleString(),  color:"#10b981" },
+      { key:"bookingRate",    label:"Booking Rate",    fmt: v => (v*100).toFixed(1)+"%",        color:"#8b5cf6" },
+      { key:"cancelRate",     label:"Cancel Rate",     fmt: v => (v*100).toFixed(1)+"%",        color:"#ef4444", invert:true },
+      { key:"conversionRate", label:"Conversion Rate", fmt: v => (v*100).toFixed(1)+"%",        color:"#14b8a6" }
     ];
 
-    const ADDITIVE_METRICS   = new Set(["leads","booked","canceled","completed","revenue"]);
+    const ADDITIVE_METRICS   = new Set(["leads","booked","canceled","completed"]);
     const SHARE_INCOMPATIBLE = new Set(["bookingRate","cancelRate","conversionRate"]);
     const CAT_COLORS = { Brand:"#0ea5e9", GBL:"#f59e0b", Referral:"#10b981" };
 
